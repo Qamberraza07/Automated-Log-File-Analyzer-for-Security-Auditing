@@ -1,0 +1,152 @@
+# --- Automated Log File Analyzer for Security Auditing (Final Project) ---
+
+!pip install fpdf
+
+# Step 1: Import necessary libraries
+import re
+import matplotlib.pyplot as plt
+from collections import Counter
+from datetime import datetime
+from google.colab import files
+from fpdf import FPDF
+
+print("=== Automated Log File Analyzer ===")
+print("Upload your log file (Apache, SSH, Firewall logs)")
+
+# Step 2: File upload
+uploaded = files.upload()
+filename = list(uploaded.keys())[0]
+
+# Step 3: Read the log file
+with open(filename, 'r') as file:
+    logs = file.readlines()
+
+print(f"\nSuccessfully loaded {len(logs)} log entries.")
+
+# Step 4: Define regex patterns
+ip_pattern = r'(\d{1,3}(?:\.\d{1,3}){3})'
+timestamp_pattern = r'\[(.*?)\]'
+status_pattern = r'"\s(\d{3})\s'
+
+# Initialize lists
+ips = []
+timestamps = []
+failed_logins = []
+non_200_status = []
+
+# Step 5: Process each log line
+for line in logs:
+    ip_match = re.search(ip_pattern, line)
+    timestamp_match = re.search(timestamp_pattern, line)
+    status_match = re.search(status_pattern, line)
+    
+    if ip_match:
+        ip = ip_match.group(1)
+        ips.append(ip)
+    
+    if timestamp_match:
+        timestamps.append(timestamp_match.group(1))
+    
+    if status_match:
+        status_code = status_match.group(1)
+        if status_code in ['401', '403', '404']:  # suspicious
+            failed_logins.append(ip)
+            non_200_status.append((ip, status_code))
+
+# Step 6: Analyze data
+ip_counter = Counter(ips)
+failed_counter = Counter(failed_logins)
+
+# Display statistics
+print("\n=== General Log Statistics ===")
+print(f"Total log entries: {len(logs)}")
+print(f"Unique IPs found: {len(ip_counter)}")
+print(f"Total failed login attempts (HTTP 401/403/404): {len(failed_logins)}")
+
+top_ips = ip_counter.most_common(10)
+top_failed_ips = failed_counter.most_common(5)
+
+print("\nTop 10 Most Frequent IPs:")
+for ip, count in top_ips:
+    print(f"{ip}: {count} times")
+
+print("\nTop 5 Suspicious IPs (Failed Logins):")
+for ip, count in top_failed_ips:
+    print(f"{ip}: {count} failed attempts")
+
+# Step 7: Visualization
+
+# Plot Top 10 Frequent IPs
+ips_plot, counts_plot = zip(*top_ips)
+
+plt.figure(figsize=(10,5))
+plt.bar(ips_plot, counts_plot, color='skyblue')
+plt.title('Top 10 Frequent IP Addresses')
+plt.xlabel('IP Address')
+plt.ylabel('Number of Connections')
+plt.xticks(rotation=45)
+plt.grid(axis='y')
+plt.tight_layout()
+plt.savefig('top_ips_chart.png')
+plt.show()
+
+# Plot Top 5 Failed Login Attempts
+if top_failed_ips:
+    fail_ips_plot, fail_counts_plot = zip(*top_failed_ips)
+    plt.figure(figsize=(8,4))
+    plt.bar(fail_ips_plot, fail_counts_plot, color='salmon')
+    plt.title('Top 5 Failed Login Attempts')
+    plt.xlabel('IP Address')
+    plt.ylabel('Failed Attempts')
+    plt.xticks(rotation=45)
+    plt.grid(axis='y')
+    plt.tight_layout()
+    plt.savefig('failed_logins_chart.png')
+    plt.show()
+else:
+    print("\nNo failed login attempts detected.")
+
+
+
+# Step 8: Save Full PDF Report
+pdf = FPDF()
+pdf.add_page()
+pdf.set_font("Arial", size=14)
+pdf.cell(200, 10, txt="Security Audit Report", ln=True, align='C')
+
+pdf.set_font("Arial", size=11)
+pdf.ln(10)
+pdf.cell(200, 10, txt=f"Total log entries: {len(logs)}", ln=True)
+pdf.cell(200, 10, txt=f"Unique IPs found: {len(ip_counter)}", ln=True)
+pdf.cell(200, 10, txt=f"Total failed login attempts: {len(failed_logins)}", ln=True)
+
+pdf.ln(10)
+pdf.set_font("Arial", "B", size=12)
+pdf.cell(200, 10, txt="Top 10 Frequent IPs:", ln=True)
+pdf.set_font("Arial", size=11)
+for ip, count in top_ips:
+    pdf.cell(200, 8, txt=f"{ip}: {count} times", ln=True)
+
+pdf.ln(5)
+pdf.set_font("Arial", "B", size=12)
+pdf.cell(200, 10, txt="Top 5 Failed Login Attempts:", ln=True)
+pdf.set_font("Arial", size=11)
+for ip, count in top_failed_ips:
+    pdf.cell(200, 8, txt=f"{ip}: {count} failed attempts", ln=True)
+
+# Insert Charts
+pdf.ln(10)
+pdf.set_font("Arial", "B", size=12)
+pdf.cell(200, 10, txt="Charts:", ln=True)
+
+pdf.image('top_ips_chart.png', x = 10, w = 180)
+if top_failed_ips:
+    pdf.ln(85)
+    pdf.image('failed_logins_chart.png', x = 10, w = 180)
+
+pdf.output("Security_Audit_Report.pdf")
+
+# Step 9: Allow Download
+print("\nPreparing your downloadable files...")
+files.download('Security_Audit_Report.pdf')
+print("\n=== End of Automated Log File Analysis ===")
